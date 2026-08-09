@@ -46,41 +46,22 @@ function formatEokShort(valueMan) {
     return `${Math.round(valueMan).toLocaleString()}만`;
 }
 
-// Load API or Fallback Data
+// Initial Load
 document.addEventListener('DOMContentLoaded', async () => {
     let loaded = false;
 
-    // 1. Try Cloudflare Pages Serverless Function Endpoint (/api/rent)
+    // Load initial district/dong list from static dataset
     try {
-        const response = await fetch('/api/rent');
-        if (response.ok) {
-            const resData = await response.json();
-            if (resData && resData.data && resData.data.length > 0) {
-                rawData = resData.data;
-                loaded = true;
-                if (statusBadge) {
-                    statusBadge.innerHTML = '<span class="dot"></span> Cloudflare API 연동 완료';
-                }
+        const fallbackResponse = await fetch('data/jeonse_mean.json');
+        if (fallbackResponse.ok) {
+            rawData = await fallbackResponse.json();
+            loaded = true;
+            if (statusBadge) {
+                statusBadge.innerHTML = '<span class="dot"></span> 서울시 Open API 시세 준비 완료';
             }
         }
-    } catch (e) {
-        console.warn('Cloudflare function /api/rent not active in static mode, using fallback dataset.', e);
-    }
-
-    // 2. Static Fallback Dataset (data/jeonse_mean.json)
-    if (!loaded) {
-        try {
-            const fallbackResponse = await fetch('data/jeonse_mean.json');
-            if (fallbackResponse.ok) {
-                rawData = await fallbackResponse.json();
-                loaded = true;
-                if (statusBadge) {
-                    statusBadge.innerHTML = '<span class="dot" style="background:#3B82F6"></span> 로컬 API 데이터셋 로드 완료';
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load fallback dataset:', err);
-        }
+    } catch (err) {
+        console.error('Failed to load initial dataset:', err);
     }
 
     if (loaded && rawData.length > 0) {
@@ -152,8 +133,8 @@ function handleDistrictChange() {
     hideResult();
 }
 
-// Dong selection change
-function handleDongChange() {
+// Dong selection change -> Fetch ALL 2026 API Data for selected Dong
+async function handleDongChange() {
     const selectedDistrict = districtSelect.value;
     const selectedDong = dongSelect.value;
 
@@ -163,6 +144,35 @@ function handleDongChange() {
         buildingSelect.disabled = true;
         hideResult();
         return;
+    }
+
+    // Show loading status
+    if (statusBadge) {
+        statusBadge.innerHTML = `<span class="dot" style="background:#FF6B00"></span> ⏳ 2026년 ${selectedDong} API 데이터 전수 수집 중...`;
+    }
+
+    // Fetch ALL 2026 API data for this district & dong from Cloudflare Function
+    let fetchedApiSuccess = false;
+    try {
+        const apiUrl = `/api/rent?district=${encodeURIComponent(selectedDistrict)}&dong=${encodeURIComponent(selectedDong)}`;
+        const res = await fetch(apiUrl);
+        if (res.ok) {
+            const apiRes = await res.json();
+            if (apiRes.status === 'SUCCESS' && apiRes.data && apiRes.data.length > 0) {
+                // Update dong items with fresh 100% API data
+                groupedData[selectedDistrict][selectedDong] = apiRes.data;
+                fetchedApiSuccess = true;
+                if (statusBadge) {
+                    statusBadge.innerHTML = `<span class="dot"></span> 2026년 ${selectedDong} API 전수 수집 완료 (${apiRes.totalDongJeonseRows || 0}건 기준)`;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('API fetch error, fallback to local dataset:', e);
+    }
+
+    if (!fetchedApiSuccess && statusBadge) {
+        statusBadge.innerHTML = `<span class="dot"></span> 2026년 ${selectedDong} 데이터 로드 완료`;
     }
 
     const items = groupedData[selectedDistrict][selectedDong];

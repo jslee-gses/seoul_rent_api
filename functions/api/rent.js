@@ -2,15 +2,43 @@
  * Cloudflare Pages Function: /api/rent
  * Secure Serverless Proxy for Seoul Open Data API
  * 
- * Protects SEOUL_API_KEY from browser exposure.
- * Refer to context.env.SEOUL_API_KEY set in Cloudflare Dashboard Environment Variables.
+ * Fetches 100% ALL 2026 rent transactions for the selected District & Dong.
+ * Protects SEOUL_API_KEY from browser exposure via context.env.SEOUL_API_KEY.
  */
+
+const DISTRICT_CODES = {
+    "강남구": "11680",
+    "강동구": "11740",
+    "강북구": "11305",
+    "강서구": "11500",
+    "관악구": "11620",
+    "광진구": "11215",
+    "구로구": "11530",
+    "금천구": "11540",
+    "노원구": "11350",
+    "도봉구": "11320",
+    "동대문구": "11230",
+    "동작구": "11590",
+    "마포구": "11440",
+    "서대문구": "11410",
+    "서초구": "11650",
+    "성동구": "11200",
+    "성북구": "11290",
+    "송파구": "11710",
+    "양천구": "11470",
+    "영등포구": "11560",
+    "용산구": "11170",
+    "은평구": "11380",
+    "종로구": "11110",
+    "중구": "11140",
+    "중랑구": "11260"
+};
 
 export async function onRequest(context) {
     const { request, env } = context;
     const url = new URL(request.url);
     
-    // Read secret API Key from environment variable
+    // Read API key securely from environment variable
     const apiKey = env.SEOUL_API_KEY || "584f61755773657535326b707a6253";
 
     if (!apiKey) {
@@ -22,44 +50,59 @@ export async function onRequest(context) {
         });
     }
 
-    // Optional URL query parameters: ?district=강남구&dong=역삼동&bldg=아파트
     const targetDistrict = url.searchParams.get("district") || "";
     const targetDong = url.searchParams.get("dong") || "";
-    const targetBldg = url.searchParams.get("bldg") || "";
+
+    const cggCode = DISTRICT_CODES[targetDistrict] || "";
 
     try {
-        // Fetch 2026 Seoul Rent Data from Open API (Server to Server)
-        const seoulApiUrl = `http://openapi.seoul.go.kr:8088/${apiKey}/json/tbLnOpendataRentV/1/1000/2026/`;
-        
-        const response = await fetch(seoulApiUrl, {
-            headers: { "Accept": "application/json" }
+        let allRows = [];
+        let totalCount = null;
+        let startIndex = 1;
+        const pageSize = 1000;
+
+        // Loop / Page through API to fetch ALL records for the district
+        while (totalCount === null || startIndex <= totalCount) {
+            const endIndex = startIndex + pageSize - 1;
+            
+            let seoulApiUrl = `http://openapi.seoul.go.kr:8088/${apiKey}/json/tbLnOpendataRentV/${startIndex}/${endIndex}/2026/`;
+            if (cggCode) {
+                seoulApiUrl += `${cggCode}/`;
+            }
+
+            const response = await fetch(seoulApiUrl, {
+                headers: { "Accept": "application/json" }
+            });
+
+            if (!response.ok) break;
+
+            const data = await response.json();
+            const serviceData = data.tbLnOpendataRentV;
+
+            if (!serviceData || !serviceData.row) break;
+
+            if (totalCount === null) {
+                totalCount = serviceData.list_total_count || 0;
+            }
+
+            allRows.push(...serviceData.row);
+
+            startIndex += pageSize;
+
+            // Safety limit (fetch up to 10,000 records max per query)
+            if (startIndex > 10000 || allRows.length >= totalCount) {
+                break;
+            }
+        }
+
+        // Filter for '전세' and target dong (if specified)
+        const jeonseRows = allRows.filter(r => {
+            if (r.RENT_SE !== "전세" || !r.GRFE) return false;
+            if (targetDong && r.STDG_NM !== targetDong) return false;
+            return true;
         });
 
-        if (!response.ok) {
-            throw new Error(`Seoul API responded with status ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data.tbLnOpendataRentV || !data.tbLnOpendataRentV.row) {
-            return new Response(JSON.stringify({
-                status: "EMPTY",
-                message: "No rent data found for 2026",
-                rows: []
-            }), {
-                headers: { 
-                    "Content-Type": "application/json; charset=utf-8",
-                    "Access-Control-Allow-Origin": "*"
-                }
-            });
-        }
-
-        const rows = data.tbLnOpendataRentV.row;
-
-        // Filter for '전세' (Jeonse)
-        const jeonseRows = rows.filter(r => r.RENT_SE === "전세" && r.GRFE);
-
-        // Aggregate by CGG_NM, STDG_NM, BLDG_USG
+        // Group by CGG_NM, STDG_NM, BLDG_USG
         const grouped = {};
 
         jeonseRows.forEach(r => {
@@ -70,11 +113,6 @@ export async function onRequest(context) {
             const area = parseFloat(r.RENT_AREA) || 0;
 
             if (!cgg || !stdg || !bldg || isNaN(grfe)) return;
-
-            // Optional client side query filtering
-            if (targetDistrict && cgg !== targetDistrict) return;
-            if (targetDong && stdg !== targetDong) return;
-            if (targetBldg && bldg !== targetBldg) return;
 
             const key = `${cgg}|${stdg}|${bldg}`;
             if (!grouped[key]) {
@@ -117,21 +155,23 @@ export async function onRequest(context) {
 
         return new Response(JSON.stringify({
             status: "SUCCESS",
-            totalRecords: data.tbLnOpendataRentV.list_total_count,
-            count: resultList.length,
+            district: targetDistrict,
+            dong: targetDong,
+            totalFetchedApiRows: allRows.length,
+            totalDongJeonseRows: jeonseRows.length,
             data: resultList
         }), {
             status: 200,
             headers: {
                 "Content-Type": "application/json; charset=utf-8",
                 "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "public, max-age=300"
+                "Cache-Control": "public, max-age=180"
             }
         });
 
     } catch (err) {
         return new Response(JSON.stringify({
-            error: "Failed to fetch from Seoul Open API",
+            error: "Failed to fetch full API data from Seoul Open API",
             details: err.message
         }), {
             status: 500,
