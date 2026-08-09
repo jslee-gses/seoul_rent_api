@@ -16,6 +16,7 @@ const statusBadge = document.getElementById('data-status-badge');
 const resCgg = document.getElementById('res-cgg');
 const resStdg = document.getElementById('res-stdg');
 const resBldg = document.getElementById('res-bldg');
+const resDongTitle = document.getElementById('res-dong-title');
 
 const resAvgEok = document.getElementById('res-avg-eok');
 const resAvgMan = document.getElementById('res-avg-man');
@@ -209,6 +210,7 @@ function renderResult(district, dong, bldg, item, allDongItems) {
     resCgg.textContent = district;
     resStdg.textContent = dong;
     resBldg.textContent = bldg;
+    if (resDongTitle) resDongTitle.textContent = dong;
 
     const formatted = formatEokMan(item.AVG_GRFE);
     resAvgEok.textContent = formatted.eok;
