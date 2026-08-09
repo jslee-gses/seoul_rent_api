@@ -1,0 +1,13 @@
+# Environment Secrets (CRITICAL: NEVER COMMIT THIS)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build & Tool Cache
+.wrangler/
+node_modules/
+dist/
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울시 Open API 평균 전세가 조회 | 서울전세 API 인사이트</title>
+    <meta name="description" content="서울 열린데이터 광장 API 연동 2026년 행정동 및 주택유형별 평균 전세가 실거래 데이터 조회">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;800&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Navbar Header -->
+    <header class="navbar">
+        <div class="container navbar-container">
+            <div class="logo">
+                <div class="logo-icon">🔑</div>
+                <div class="logo-text">
+                    <span class="brand-title">서울전세<span class="highlight">API 인사이트</span></span>
+                    <span class="brand-sub">서울 열린데이터 광장 Open API 연동</span>
+                </div>
+            </div>
+            <div class="header-tag security-tag">
+                <span class="lock-icon">🔒</span> API Key 노출 방지 (Cloudflare Functions)
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="container main-content">
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="badge">SEOUL OPEN API RENT SERVICE</div>
+            <h1>서울시 Open API 실시간 시세<br><span class="orange-text">행정동 · 주택유형별 평균 전세가</span></h1>
+            <p class="hero-desc">서울시 부동산 실거래가 Open API 데이터를 안전한 서버 함수로 수집하여 시세를 빠르게 안내해 드립니다.</p>
+        </section>
+
+        <!-- Filter Controls -->
+        <section class="filter-card">
+            <div class="filter-header">
+                <h2>🔎 시세 조회 조건 선택</h2>
+                <div class="status-indicator" id="data-status-badge">
+                    <span class="dot"></span> API 데이터 동기화 완료
+                </div>
+            </div>
+            
+            <div class="filter-grid">
+                <!-- 1. District -->
+                <div class="form-group">
+                    <label for="district-select">자치구 (구)</label>
+                    <div class="select-wrapper">
+                        <select id="district-select" class="form-select">
+                            <option value="">-- 자치구 선택 --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 2. Dong -->
+                <div class="form-group">
+                    <label for="dong-select">행정동 / 법정동</label>
+                    <div class="select-wrapper">
+                        <select id="dong-select" class="form-select" disabled>
+                            <option value="">-- 자치구를 먼저 선택해 주세요 --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 3. Building Type -->
+                <div class="form-group">
+                    <label for="building-select">주택유형</label>
+                    <div class="select-wrapper">
+                        <select id="building-select" class="form-select" disabled>
+                            <option value="">-- 동을 먼저 선택해 주세요 --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Result Dashboard -->
+        <section id="result-section" class="result-section hidden">
+            <div class="result-header">
+                <div class="location-badge">
+                    <span id="res-cgg">강남구</span> · <span id="res-stdg">대치동</span>
+                </div>
+                <h2 id="res-title">대치동 <span id="res-bldg" class="orange-text">아파트</span> 평균 전세가</h2>
+            </div>
+
+            <!-- Metric Cards -->
+            <div class="metrics-grid">
+                <!-- Main KPI Card -->
+                <div class="metric-card primary-kpi">
+                    <div class="metric-label">평균 전세가 (API 집계)</div>
+                    <div class="metric-value-main">
+                        <span id="res-avg-eok" class="eok-val">0.0억 원</span>
+                        <span id="res-avg-man" class="man-val">(00,000 만원)</span>
+                    </div>
+                    <div class="metric-sub">
+                        <span class="icon">📊</span> 총 <strong id="res-count">0</strong>건 실거래 기준
+                    </div>
+                </div>
+
+                <!-- Median KPI Card -->
+                <div class="metric-card">
+                    <div class="metric-label">중앙 전세가 (중위값)</div>
+                    <div class="metric-value" id="res-median">0.0억 원</div>
+                    <div class="metric-sub">실거래 중 중간값</div>
+                </div>
+
+                <!-- Range Card -->
+                <div class="metric-card">
+                    <div class="metric-label">최저 ~ 최고 거래 범위</div>
+                    <div class="metric-value range-value">
+                        <span id="res-min">0억</span> ~ <span id="res-max">0억</span>
+                    </div>
+                    <div class="metric-sub">실거래 금액 구간</div>
+                </div>
+
+                <!-- Area Card -->
+                <div class="metric-card">
+                    <div class="metric-label">평균 전용면적</div>
+                    <div class="metric-value" id="res-area">0.0 ㎡</div>
+                    <div class="metric-sub">약 <span id="res-pyung">0</span>평 기준</div>
+                </div>
+            </div>
+
+            <!-- Analysis & Comparison Section -->
+            <div class="analysis-grid">
+                <!-- Chart Card -->
+                <div class="analysis-card chart-card">
+                    <h3>🏢 동내 주택유형별 평균 전세가 비교</h3>
+                    <p class="card-subtitle"><span id="chart-location-name">대치동</span>의 모든 주택유형 시세를 비교합니다.</p>
+                    <div class="chart-container">
+                        <canvas id="typeComparisonChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Type List Card -->
+                <div class="analysis-card details-card">
+                    <h3>📋 해당 동 주택유형별 시세 목록</h3>
+                    <div class="type-list" id="type-list-container">
+                        <!-- Dynamic type list -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Placeholder Section -->
+        <section id="placeholder-section" class="placeholder-section">
+            <div class="placeholder-icon">🏙️</div>
+            <h3>행정동과 주택유형을 선택하세요</h3>
+            <p>원하는 자치구, 행정동(법정동) 및 주택유형을 클릭하시면 Open API 실거래 기반 평균 전세가를 바로 계산해 드립니다.</p>
+        </section>
+
+        <!-- District Overview Section -->
+        <section class="summary-section">
+            <div class="summary-header">
+                <h2>📊 2026년 서울시 주요 자치구별 아파트 평균 전세가</h2>
+                <p>Open API 실거래 수집 데이터 기반 순위</p>
+            </div>
+            <div id="district-overview-grid" class="overview-grid">
+                <!-- Dynamic cards -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-container">
+            <p>© 2026 서울전세 API 인사이트 · Data Source: 서울 열린데이터 광장 Open API (`tbLnOpendataRentV`)</p>
+            <p class="footer-note">🔒 본 서비스는 API Key를 브라우저에 직접 노출하지 않고 Cloudflare Functions 서버리스 보안 서버를 통해 안전하게 통신합니다.</p>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
